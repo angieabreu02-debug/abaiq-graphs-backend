@@ -210,7 +210,13 @@ app.post('/classify-graph-data', checkMinVersion, verifyToken, async (req, res) 
       return items.map(item => ({
         name: String(item.name || 'Unknown'),
         values: (Array.isArray(item.values) ? item.values : []).map(v => Number(v) || 0).slice(0, 50),
-        labels: (Array.isArray(item.labels) ? item.labels : []).map(l => String(l)).slice(0, 50)
+        labels: (Array.isArray(item.labels) ? item.labels : []).map(l => String(l)).slice(0, 50),
+        sto: item.sto != null ? Number(item.sto) : null,
+        trend: item.trend && typeof item.trend === 'object' ? {
+          datapoints: Number(item.trend.datapoints) || 0,
+          direction: String(item.trend.direction || 'Stable'),
+          slope: Number(item.trend.slope) || 0
+        } : null
       })).filter(item => item.values.length > 0);
     };
 
