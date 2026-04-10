@@ -6,14 +6,21 @@ const cors = require('cors');
 const Anthropic = require('@anthropic-ai/sdk');
 const rateLimit = require('express-rate-limit');
 
-const fetchFn = typeof globalThis.fetch === 'function' ? globalThis.fetch : require('node-fetch');
+// Polyfill fetch globals for Node < 18 (required by Anthropic SDK)
+if (typeof globalThis.fetch !== 'function') {
+  const nodeFetch = require('node-fetch');
+  globalThis.fetch = nodeFetch;
+  globalThis.Headers = nodeFetch.Headers;
+  globalThis.Request = nodeFetch.Request;
+  globalThis.Response = nodeFetch.Response;
+}
+const fetchFn = globalThis.fetch;
 
 const app = express();
 const PORT = process.env.PORT || 3002;
 
 const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-  fetch: fetchFn
+  apiKey: process.env.ANTHROPIC_API_KEY
 });
 
 preloadAllPrompts();
