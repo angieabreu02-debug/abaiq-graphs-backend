@@ -190,7 +190,7 @@ app.post('/classify-graph-data', checkMinVersion, verifyToken, async (req, res) 
         { role: 'user', content: userPrompt }
       ],
       temperature: 0.2,
-      max_completion_tokens: 4000,
+      max_completion_tokens: 16000,
       response_format: { type: 'json_object' }
     });
 
