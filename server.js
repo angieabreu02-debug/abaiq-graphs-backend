@@ -12,7 +12,8 @@ const app = express();
 const PORT = process.env.PORT || 3002;
 
 const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY
+  apiKey: process.env.ANTHROPIC_API_KEY,
+  fetch: fetchFn
 });
 
 preloadAllPrompts();
