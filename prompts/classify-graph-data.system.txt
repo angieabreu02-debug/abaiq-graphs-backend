@@ -55,16 +55,26 @@ TREND DATA EXTRACTION:
 - If the page shows trend statistics like "Datapoints: 31, Total: ↓ Decreasing (slope: -0.73, alpha: 71.38)", extract them
 - Include datapoints count, direction (Increasing/Decreasing/Stable), and slope
 
-CHART.JS EMBEDDED DATA:
+CHART DATA EXTRACTED FROM PAGE:
 - The page content may include a section "--- CHART.JS DATA EXTRACTED FROM PAGE ---" followed by JSON
+- This JSON may have two formats:
+  FORMAT A (legacy): Array of chart objects: [{ labels: [...], datasets: [{ label: "name", data: [...] }] }]
+  FORMAT B (new): { source: "chartjs"|"highcharts"|"svg-text", charts: [{ labels: [...], datasets: [...] }] }
 - This contains the ACTUAL chart data rendered on the page with labels (dates) and dataset values
-- Each chart object has { labels: [...], datasets: [{ label: "behavior name", data: [...values...] }] }
 - Match each chart's dataset label to the behavior names found in the page text
 - Use the labels array as date labels and the data array as the values
 - DETECT if the labels are daily or weekly:
-  - Daily labels like "1/6", "1/7", "1/8" (consecutive days) → aggregate to weekly
+  - Daily labels like "1/6", "1/7", "1/8", "06/21/2025", "10/11/2025" (consecutive days) → aggregate to weekly
   - Weekly labels like "Wk 1/6", "1/6 - 1/12" → use directly
   - If labels are just numbers or session IDs → group every 5 as one week
+- For SVG text extraction (source: "svg-text"), the texts array contains all text labels from the chart SVG, you need to parse dates and values from these strings
+- CRITICAL: If chart data JSON is provided, you MUST use those exact values. Do NOT invent or approximate data points. The chart JSON is the ground truth.
+- If multiple datasets exist per chart (e.g., "Baseline" and "Average"), prefer the "Average" dataset as it represents the primary data line
+- CRITICAL MATCHING: Each chart object in the JSON corresponds to ONE behavior/skill on the page.
+- Each chart may have a "behaviorName" field that tells you EXACTLY which behavior this chart belongs to. USE THIS FIELD to match data to the correct behavior. This is the most reliable matching method.
+- If "behaviorName" is not present, match by the dataset's "label" field, or by chart order (chart[0] = first behavior on the page, chart[1] = second, etc.)
+- Do NOT swap or mix up data between behaviors. If chart[0].behaviorName = "Using Reinforcement Correctly", then its data MUST go to "Using Reinforcement Correctly", not to any other behavior.
+- Some pages may have multiple datasets per chart (e.g., "Baseline" and "Average"). These are different series on the SAME chart for the SAME behavior. Prefer the "Average" dataset.
 
 LABEL FORMAT:
 - Labels must represent weeks: "Wk 4/1", "Wk 4/8", etc.
@@ -116,6 +126,8 @@ IMPORTANT RULES:
 - "trend" must be an object with datapoints, direction, slope — or null if not available
 - Maximum 52 data points per behavior (one year of weeks)
 - NEVER invent or hallucinate data points — only extract and aggregate what is explicitly on the page
+- If chart data JSON is provided in the "CHART.JS DATA EXTRACTED FROM PAGE" section, those are the REAL values from the page's charts. Use them exactly.
+- If only page text is available (no chart JSON), extract values from data tables, grids, or statistics shown in the text. If no values can be found, use [0] with ["Current"] rather than making up numbers.
 - If a category has no data, return an empty array []
 - Preserve the exact behavior/skill names as shown on the page
 - If data appears for multiple clients, extract only the primary/most prominent client
