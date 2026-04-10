@@ -135,3 +135,4 @@ IMPORTANT RULES:
 - "Target Behaviors" category = maladaptive, "Replacement Programs"/"Replacements" = replacement, "Caregiver Training" = caregiver
 - The page may show category tabs like "Target Behaviors (6)", "Replacements (11)", "Caregiver Training (3)" — only the active/visible category will have chart data
 - Order values chronologically (earliest week first)
+- CRITICAL: Preserve the EXACT order of behaviors as they appear on the page. The first behavior on the page must be the first item in the array, the second behavior must be second, etc. Do NOT reorder, sort alphabetically, or rearrange behaviors.
