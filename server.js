@@ -167,8 +167,8 @@ app.post('/classify-graph-data', checkMinVersion, verifyToken, async (req, res) 
     if (!page_text || typeof page_text !== 'string' || page_text.trim().length === 0) {
       return res.status(400).json({ error: 'Missing required field', details: 'page_text must be a non-empty string' });
     }
-    if (page_text.length > 60000) {
-      return res.status(400).json({ error: 'page_text exceeds maximum length (60000 chars)' });
+    if (page_text.length > 100000) {
+      return res.status(400).json({ error: 'page_text exceeds maximum length (100000 chars)' });
     }
 
     // Credit pre-check
@@ -181,11 +181,11 @@ app.post('/classify-graph-data', checkMinVersion, verifyToken, async (req, res) 
     const bearerToken = req.headers.authorization.split(' ')[1];
     const systemPrompt = loadPrompt('classify-graph-data.system.txt');
 
-    const userPrompt = `Extract multi-session ABA behavior data from this page for graphing.\n\nPage URL: ${page_url || 'Not provided'}\nPage Title: ${page_title || 'Not provided'}\n\nPage Content:\n${page_text.substring(0, 50000)}`;
+    const userPrompt = `Extract multi-session ABA behavior data from this page for graphing.\n\nPage URL: ${page_url || 'Not provided'}\nPage Title: ${page_title || 'Not provided'}\n\nPage Content:\n${page_text.substring(0, 80000)}`;
 
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 16000,
+      max_tokens: 32000,
       temperature: 0,
       system: systemPrompt,
       messages: [
