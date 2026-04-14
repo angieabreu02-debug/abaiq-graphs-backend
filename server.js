@@ -183,9 +183,11 @@ app.post('/classify-graph-data', checkMinVersion, verifyToken, async (req, res) 
 
     const userPrompt = `Extract multi-session ABA behavior data from this page for graphing.\n\nPage URL: ${page_url || 'Not provided'}\nPage Title: ${page_title || 'Not provided'}\n\nPage Content:\n${page_text.substring(0, 80000)}`;
 
-    const response = await anthropic.messages.create({
+    // Use streaming to avoid 10-minute timeout on large requests
+    let rawContent = '';
+    const stream = anthropic.messages.stream({
       model: 'claude-sonnet-4-20250514',
-      max_tokens: 32000,
+      max_tokens: 16000,
       temperature: 0,
       system: systemPrompt,
       messages: [
@@ -193,7 +195,12 @@ app.post('/classify-graph-data', checkMinVersion, verifyToken, async (req, res) 
       ]
     });
 
-    const rawContent = response.content?.[0]?.text;
+    for await (const event of stream) {
+      if (event.type === 'content_block_delta' && event.delta?.text) {
+        rawContent += event.delta.text;
+      }
+    }
+
     if (!rawContent) throw new Error('Empty response from AI model');
 
     let parsed;
