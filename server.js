@@ -186,7 +186,7 @@ app.post('/classify-graph-data', checkMinVersion, verifyToken, async (req, res) 
     // Use streaming to avoid 10-minute timeout on large requests
     let rawContent = '';
     const stream = anthropic.messages.stream({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-sonnet-4-6',
       max_tokens: 16000,
       temperature: 0,
       system: systemPrompt,
