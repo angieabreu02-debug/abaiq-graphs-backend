@@ -171,11 +171,14 @@ app.post('/classify-graph-data', checkMinVersion, verifyToken, async (req, res) 
       return res.status(400).json({ error: 'page_text exceeds maximum length (100000 chars)' });
     }
 
-    // Credit pre-check
+    // Credit pre-check — Smart Graphs cost 50 credits (Sonnet 4.6 is the
+    // expensive op; pricing parity with BIP analysis to align user mental model
+    // of "large AI operation = 50 credits").
+    const GRAPH_CREDIT_COST = 50;
     const availableCredits = (req.user.credits_left || 0) + (req.user.extra_credits_balance || 0);
-    if (availableCredits < 10) {
-      console.log(`⛔ Not enough credits for graph scan: has ${availableCredits}, needs 10`);
-      return res.status(402).json({ error: 'Not enough credits', credits_remaining: availableCredits });
+    if (availableCredits < GRAPH_CREDIT_COST) {
+      console.log(`⛔ Not enough credits for graph scan: has ${availableCredits}, needs ${GRAPH_CREDIT_COST}`);
+      return res.status(402).json({ error: 'Not enough credits', credits_remaining: availableCredits, credits_required: GRAPH_CREDIT_COST });
     }
 
     const bearerToken = req.headers.authorization.split(' ')[1];
@@ -230,8 +233,8 @@ app.post('/classify-graph-data', checkMinVersion, verifyToken, async (req, res) 
     parsed.replacement = sanitizeItems(parsed.replacement);
     parsed.caregiver = sanitizeItems(parsed.caregiver);
 
-    // Consume 10 credits
-    const consumeResult = await consumeCreditsOnBackend(bearerToken, 10, source || 'graph_scan');
+    // Consume credits (50)
+    const consumeResult = await consumeCreditsOnBackend(bearerToken, GRAPH_CREDIT_COST, source || 'graph_scan');
     if (!consumeResult) {
       console.error('[GRAPH-DATA] Credit consumption failed after successful AI call.');
       return res.status(500).json({ error: 'Credit consumption failed. Please try again.' });
