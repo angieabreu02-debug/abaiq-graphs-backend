@@ -3,7 +3,7 @@ require('dotenv').config();
 
 const express = require('express');
 const cors = require('cors');
-const OpenAI = require('openai');
+const Anthropic = require('@anthropic-ai/sdk');
 const rateLimit = require('express-rate-limit');
 
 const fetchFn = globalThis.fetch;
@@ -11,11 +11,11 @@ const fetchFn = globalThis.fetch;
 const app = express();
 const PORT = process.env.PORT || 3002;
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
+const anthropic = new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY
 });
 
-const GRAPH_MODEL = process.env.GRAPH_MODEL || 'gpt-5';
+const GRAPH_MODEL = process.env.GRAPH_MODEL || 'claude-sonnet-4-5';
 
 preloadAllPrompts();
 
@@ -188,10 +188,9 @@ app.post('/classify-graph-data', checkMinVersion, verifyToken, async (req, res) 
 
     const userPrompt = `Extract multi-session ABA behavior data from this page for graphing.\n\nPage URL: ${page_url || 'Not provided'}\nPage Title: ${page_title || 'Not provided'}\n\nPage Content:\n${page_text.substring(0, 80000)}`;
 
-    // GPT-5 with strict JSON schema (prevents conversational preambles)
+    // Claude with tool_use forced JSON (prevents conversational preambles)
     const itemSchema = {
       type: 'object',
-      additionalProperties: false,
       properties: {
         name: { type: 'string' },
         values: { type: 'array', items: { type: 'number' } },
@@ -199,7 +198,6 @@ app.post('/classify-graph-data', checkMinVersion, verifyToken, async (req, res) 
         sto: { type: ['number', 'null'] },
         trend: {
           type: ['object', 'null'],
-          additionalProperties: false,
           properties: {
             datapoints: { type: 'number' },
             direction: { type: 'string' },
@@ -211,19 +209,17 @@ app.post('/classify-graph-data', checkMinVersion, verifyToken, async (req, res) 
       required: ['name', 'values', 'labels', 'sto', 'trend']
     };
 
-    const completion = await openai.chat.completions.create({
+    const response = await anthropic.messages.create({
       model: GRAPH_MODEL,
-      max_completion_tokens: 32000,
-      reasoning_effort: 'minimal',
-      verbosity: 'low',
-      response_format: {
-        type: 'json_schema',
-        json_schema: {
-          name: 'graph_data',
-          strict: true,
-          schema: {
+      max_tokens: 16000,
+      temperature: 0,
+      system: systemPrompt,
+      tools: [
+        {
+          name: 'extract_graph_data',
+          description: 'Extract ABA behavior data from the page into structured arrays for graphing.',
+          input_schema: {
             type: 'object',
-            additionalProperties: false,
             properties: {
               maladaptive: { type: 'array', items: itemSchema },
               replacement: { type: 'array', items: itemSchema },
@@ -232,22 +228,16 @@ app.post('/classify-graph-data', checkMinVersion, verifyToken, async (req, res) 
             required: ['maladaptive', 'replacement', 'caregiver']
           }
         }
-      },
+      ],
+      tool_choice: { type: 'tool', name: 'extract_graph_data' },
       messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt + '\n\nReturn ONLY the JSON object that matches the schema. No preamble, no explanation, no markdown code fences.' }
+        { role: 'user', content: userPrompt }
       ]
     });
 
-    const rawContent = completion.choices?.[0]?.message?.content || '';
-    if (!rawContent) throw new Error('Empty response from AI model');
-
-    let parsed;
-    try {
-      parsed = JSON.parse(rawContent.trim());
-    } catch (parseErr) {
-      parsed = JSON.parse(fixJSONFormatting(rawContent));
-    }
+    const toolUse = response.content.find(block => block.type === 'tool_use');
+    if (!toolUse || !toolUse.input) throw new Error('Model did not call extract_graph_data tool');
+    let parsed = toolUse.input;
 
     // Sanitize structure
     const sanitizeItems = (items) => {
