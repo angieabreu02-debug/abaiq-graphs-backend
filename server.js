@@ -188,11 +188,49 @@ app.post('/classify-graph-data', checkMinVersion, verifyToken, async (req, res) 
 
     const userPrompt = `Extract multi-session ABA behavior data from this page for graphing.\n\nPage URL: ${page_url || 'Not provided'}\nPage Title: ${page_title || 'Not provided'}\n\nPage Content:\n${page_text.substring(0, 80000)}`;
 
-    // GPT-5 with JSON mode (no temperature override — gpt-5 family uses default)
+    // GPT-5 with strict JSON schema (prevents conversational preambles)
+    const itemSchema = {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        name: { type: 'string' },
+        values: { type: 'array', items: { type: 'number' } },
+        labels: { type: 'array', items: { type: 'string' } },
+        sto: { type: ['number', 'null'] },
+        trend: {
+          type: ['object', 'null'],
+          additionalProperties: false,
+          properties: {
+            datapoints: { type: 'number' },
+            direction: { type: 'string' },
+            slope: { type: 'number' }
+          },
+          required: ['datapoints', 'direction', 'slope']
+        }
+      },
+      required: ['name', 'values', 'labels', 'sto', 'trend']
+    };
+
     const completion = await openai.chat.completions.create({
       model: GRAPH_MODEL,
       max_completion_tokens: 16000,
-      response_format: { type: 'json_object' },
+      response_format: {
+        type: 'json_schema',
+        json_schema: {
+          name: 'graph_data',
+          strict: true,
+          schema: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              maladaptive: { type: 'array', items: itemSchema },
+              replacement: { type: 'array', items: itemSchema },
+              caregiver: { type: 'array', items: itemSchema }
+            },
+            required: ['maladaptive', 'replacement', 'caregiver']
+          }
+        }
+      },
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
