@@ -3,7 +3,7 @@ require('dotenv').config();
 
 const express = require('express');
 const cors = require('cors');
-const Anthropic = require('@anthropic-ai/sdk');
+const OpenAI = require('openai');
 const rateLimit = require('express-rate-limit');
 
 const fetchFn = globalThis.fetch;
@@ -11,11 +11,11 @@ const fetchFn = globalThis.fetch;
 const app = express();
 const PORT = process.env.PORT || 3002;
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
 });
 
-const GRAPH_MODEL = process.env.GRAPH_MODEL || 'claude-sonnet-4-5';
+const GRAPH_MODEL = process.env.GRAPH_MODEL || 'gpt-5-mini';
 
 preloadAllPrompts();
 
@@ -188,9 +188,10 @@ app.post('/classify-graph-data', checkMinVersion, verifyToken, async (req, res) 
 
     const userPrompt = `Extract multi-session ABA behavior data from this page for graphing.\n\nPage URL: ${page_url || 'Not provided'}\nPage Title: ${page_title || 'Not provided'}\n\nPage Content:\n${page_text.substring(0, 80000)}`;
 
-    // Claude with tool_use forced JSON (prevents conversational preambles)
+    // OpenAI with forced function calling (equivalent of Claude tool_use)
     const itemSchema = {
       type: 'object',
+      additionalProperties: false,
       properties: {
         name: { type: 'string' },
         values: { type: 'array', items: { type: 'number' } },
@@ -198,6 +199,7 @@ app.post('/classify-graph-data', checkMinVersion, verifyToken, async (req, res) 
         sto: { type: ['number', 'null'] },
         trend: {
           type: ['object', 'null'],
+          additionalProperties: false,
           properties: {
             datapoints: { type: 'number' },
             direction: { type: 'string' },
@@ -209,35 +211,47 @@ app.post('/classify-graph-data', checkMinVersion, verifyToken, async (req, res) 
       required: ['name', 'values', 'labels', 'sto', 'trend']
     };
 
-    const response = await anthropic.messages.create({
+    const completion = await openai.chat.completions.create({
       model: GRAPH_MODEL,
-      max_tokens: 16000,
-      temperature: 0,
-      system: systemPrompt,
+      max_completion_tokens: 32000,
+      reasoning_effort: 'minimal',
       tools: [
         {
-          name: 'extract_graph_data',
-          description: 'Extract ABA behavior data from the page into structured arrays for graphing.',
-          input_schema: {
-            type: 'object',
-            properties: {
-              maladaptive: { type: 'array', items: itemSchema },
-              replacement: { type: 'array', items: itemSchema },
-              caregiver: { type: 'array', items: itemSchema }
-            },
-            required: ['maladaptive', 'replacement', 'caregiver']
+          type: 'function',
+          function: {
+            name: 'extract_graph_data',
+            description: 'Extract ABA behavior data from the page into structured arrays for graphing.',
+            strict: true,
+            parameters: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                maladaptive: { type: 'array', items: itemSchema },
+                replacement: { type: 'array', items: itemSchema },
+                caregiver: { type: 'array', items: itemSchema }
+              },
+              required: ['maladaptive', 'replacement', 'caregiver']
+            }
           }
         }
       ],
-      tool_choice: { type: 'tool', name: 'extract_graph_data' },
+      tool_choice: { type: 'function', function: { name: 'extract_graph_data' } },
       messages: [
+        { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
       ]
     });
 
-    const toolUse = response.content.find(block => block.type === 'tool_use');
-    if (!toolUse || !toolUse.input) throw new Error('Model did not call extract_graph_data tool');
-    let parsed = toolUse.input;
+    const toolCall = completion.choices?.[0]?.message?.tool_calls?.[0];
+    if (!toolCall || !toolCall.function?.arguments) {
+      throw new Error('Model did not call extract_graph_data function');
+    }
+    let parsed;
+    try {
+      parsed = JSON.parse(toolCall.function.arguments);
+    } catch (parseErr) {
+      parsed = JSON.parse(fixJSONFormatting(toolCall.function.arguments));
+    }
 
     // Sanitize structure
     const sanitizeItems = (items) => {
