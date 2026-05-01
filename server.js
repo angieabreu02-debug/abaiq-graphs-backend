@@ -15,7 +15,7 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
 
-const GRAPH_MODEL = process.env.GRAPH_MODEL || 'gpt-5-mini';
+const GRAPH_MODEL = process.env.GRAPH_MODEL || 'gpt-5';
 
 preloadAllPrompts();
 
