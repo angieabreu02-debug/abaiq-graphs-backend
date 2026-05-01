@@ -213,7 +213,9 @@ app.post('/classify-graph-data', checkMinVersion, verifyToken, async (req, res) 
 
     const completion = await openai.chat.completions.create({
       model: GRAPH_MODEL,
-      max_completion_tokens: 16000,
+      max_completion_tokens: 32000,
+      reasoning_effort: 'minimal',
+      verbosity: 'low',
       response_format: {
         type: 'json_schema',
         json_schema: {
@@ -233,7 +235,7 @@ app.post('/classify-graph-data', checkMinVersion, verifyToken, async (req, res) 
       },
       messages: [
         { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt }
+        { role: 'user', content: userPrompt + '\n\nReturn ONLY the JSON object that matches the schema. No preamble, no explanation, no markdown code fences.' }
       ]
     });
 
@@ -266,6 +268,17 @@ app.post('/classify-graph-data', checkMinVersion, verifyToken, async (req, res) 
     parsed.maladaptive = sanitizeItems(parsed.maladaptive);
     parsed.replacement = sanitizeItems(parsed.replacement);
     parsed.caregiver = sanitizeItems(parsed.caregiver);
+
+    const totalExtracted = parsed.maladaptive.length + parsed.replacement.length + parsed.caregiver.length;
+    if (totalExtracted === 0) {
+      console.warn('[GRAPH-DATA] No data extracted — skipping credit consumption');
+      return res.status(422).json({
+        error: 'No graph data could be extracted from this page',
+        maladaptive: [],
+        replacement: [],
+        caregiver: []
+      });
+    }
 
     // Consume credits (50)
     const consumeResult = await consumeCreditsOnBackend(bearerToken, GRAPH_CREDIT_COST, source || 'graph_scan');
