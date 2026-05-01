@@ -3,7 +3,7 @@ require('dotenv').config();
 
 const express = require('express');
 const cors = require('cors');
-const Anthropic = require('@anthropic-ai/sdk');
+const OpenAI = require('openai');
 const rateLimit = require('express-rate-limit');
 
 const fetchFn = globalThis.fetch;
@@ -11,9 +11,11 @@ const fetchFn = globalThis.fetch;
 const app = express();
 const PORT = process.env.PORT || 3002;
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
 });
+
+const GRAPH_MODEL = process.env.GRAPH_MODEL || 'gpt-5-mini';
 
 preloadAllPrompts();
 
@@ -186,24 +188,18 @@ app.post('/classify-graph-data', checkMinVersion, verifyToken, async (req, res) 
 
     const userPrompt = `Extract multi-session ABA behavior data from this page for graphing.\n\nPage URL: ${page_url || 'Not provided'}\nPage Title: ${page_title || 'Not provided'}\n\nPage Content:\n${page_text.substring(0, 80000)}`;
 
-    // Use streaming to avoid 10-minute timeout on large requests
-    let rawContent = '';
-    const stream = anthropic.messages.stream({
-      model: 'claude-sonnet-4-6',
-      max_tokens: 16000,
-      temperature: 0,
-      system: systemPrompt,
+    // GPT-5 with JSON mode (no temperature override — gpt-5 family uses default)
+    const completion = await openai.chat.completions.create({
+      model: GRAPH_MODEL,
+      max_completion_tokens: 16000,
+      response_format: { type: 'json_object' },
       messages: [
+        { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt }
       ]
     });
 
-    for await (const event of stream) {
-      if (event.type === 'content_block_delta' && event.delta?.text) {
-        rawContent += event.delta.text;
-      }
-    }
-
+    const rawContent = completion.choices?.[0]?.message?.content || '';
     if (!rawContent) throw new Error('Empty response from AI model');
 
     let parsed;
